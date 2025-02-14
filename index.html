@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Wireless Paper Config</title>
+        <link href="https://bootswatch.com/5/vapor/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+        <style>
+            #terminal {
+              background-color: #000;
+              color: #0f0;
+              height: 300px;
+              overflow-y: auto;
+              padding: 10px;
+              font-family: monospace;
+              font-size: 14px;
+              border: 1px solid #94ff7f;
+            }
+            .bold {
+              font-weight: bold;
+            }
+        </style>
+    </head>
+    <body class="bg-light d-flex justify-content-center align-items-center vh-100 vw-100">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card border-dark text-white bg-dark rounded-3">
+                        <div class="card-header text-center">
+                            <h3 class="mt-3 bold">Connection</h3>
+                        </div>
+                        <div class="card-body">
+                            <!-- Terminal Output -->
+                            <div id="terminal-section" class="d-block mb-4">
+                                <div id="terminal" class="rounded-3">Wating for connection ....</div>
+                            </div>
+
+                            <!-- USB Connection -->
+                            <div id="usb-section" class="mb-4">
+                                <div class="alert alert-info mb-3" role="alert" id="conect-usb-message">
+                                    Please connect the board to this device using a USB cable.
+                                </div>
+                                <button id="connect-usb" class="btn btn-outline-info w-50">Connect</button>
+                                <div class="alert alert-success mt-4 text-dark text-center bold d-none" role="alert" id="version-message">
+                                    Current version: 0.1.0
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card border-dark text-white bg-dark rounded-3">
+                        <div class="card-header text-center">
+                            <h3 class="mt-3 bold">Configuration</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-danger d-none" role="alert" id="error-message"></div>
+                            <div class="alert alert-success d-none" role="alert" id="success-message"></div>
+                            <div class="alert alert-danger" role="alert" id="not-connected-message">
+                                Not connected
+                            </div>
+                            <div class="alert alert-warning d-none" role="alert" id="loading-wifi-networks-message">
+                                Please wait while we get the current wifi networks & configurations.
+                            </div>
+                            <div class="alert alert-info d-none" role="alert" id="exchange-id-message">
+                                Your Exchange ID is 12345678
+                            </div>
+                            <!-- Configuration -->
+                            <div id="config-section" class="d-none mb-4">
+                                <label for="wifi-networks" class="form-label">Available Networks</label>
+                                <select id="wifi-networks" class="form-select mb-3"></select>
+                        
+                                <label for="wifi-password" class="form-label">Wi-Fi Password</label>
+                                <input type="text" id="wifi-password" class="form-control mb-3">
+                        
+                                <label for="coms-channel" class="form-label">Exchange ID</label>
+                                <input type="text" id="coms-channel" class="form-control mb-3">
+
+                                <!-- Configuration Actions-->
+                                <div id="reset-section" class="row">
+                                    <div class="col-md-6">
+                                        <button id="save-config" class="btn btn-outline-success w-100">Save Configuration</button>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <button id="reset-config" class="btn btn-outline-danger w-100">Reset Configuration</button>
+                                    </div>
+                                </div>
+                                <!-- send message trigger modal -->
+                                <button type="button" class="btn btn-lg btn-primary mt-4 w-100 bold" data-bs-toggle="modal" data-bs-target="#messageModal">
+                                    Send a Message
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Modal -->
+        <div class="modal fade" id="messageModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                <h1 class="modal-title fs-5" id="staticBackdropLabel">Send a Message</h1>
+                </div>
+                <div class="modal-body">
+                    <!-- MQTT Message Form -->
+                    <div id="mqtt-section" class="mb-4">
+                        <label for="mqtt-message" class="form-label">MQTT Message</label>
+                        <input type="text" id="mqtt-message" class="form-control mb-3">
+                        <button id="send-mqtt" class="btn btn-info w-100" data-bs-dismiss="modal">Send Message</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+            </div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+        <!-- <script src="https://unpkg.com/esptool-js/lib/index.js"></script> -->
+        <script>
+            let serialPort;
+            let reader;
+            let writer;
+            let config = {};
+            let serialBuffer = '';
+            let networksLoaded = false;
+            const terminal = document.getElementById('terminal');
+            const terminalSection = document.getElementById('terminal-section');
+            const usbSection = document.getElementById('usb-section');
+            const configSection = document.getElementById('config-section');
+            const resetSection = document.getElementById('reset-section');
+            const mqttSection = document.getElementById('mqtt-section');
+            const connectUsb = document.getElementById('connect-usb');
+            const saveConfig = document.getElementById('save-config');
+            const resetConfig = document.getElementById('reset-config');
+            const sendMqtt = document.getElementById('send-mqtt');
+            const wifiNetworks = document.getElementById('wifi-networks');
+            const wifiPassword = document.getElementById('wifi-password');
+            const comsChannel = document.getElementById('coms-channel');
+            const mqttMessage = document.getElementById('mqtt-message');
+            const notConnectedMessage = document.getElementById('not-connected-message');
+            const loadingWifiNetworksMessage = document.getElementById('loading-wifi-networks-message');
+            const exchangeIdMessage = document.getElementById('exchange-id-message');
+            const connectUsbMessage = document.getElementById('conect-usb-message');
+            const versionMessage = document.getElementById('version-message');
+            const errorMessage = document.getElementById('error-message');
+            const successMessage = document.getElementById('success-message');
+
+            // Delay function
+            function delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            // Terminal function 
+            function terminalOutput(message) {
+                terminal.innerHTML += `${message}<br>`;
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+
+
+            // Connect to ESP32 over USB Serial
+            connectUsb.addEventListener('click', async () => {
+                await delay(3000);
+                try {
+                    serialPort = await navigator.serial.requestPort();
+                    await serialPort.open({ baudRate: 115200 });
+
+                    notConnectedMessage.classList.add('d-none');
+                    connectUsbMessage.classList.add('d-none');
+                    connectUsb.classList.add('d-none');
+                    loadingWifiNetworksMessage.classList.remove('d-none');
+
+                    // Start reading from the serial port
+                    readSerialData();
+                    
+                    await delay(5000);
+                    await sendSerialData({ command: "GET_CONFIG" });
+                } catch (error) {
+                    console.error('USB Serial error:', error);
+                }
+            });
+
+            // Connect to Wi-Fi
+            saveConfig.addEventListener('click', async () => {
+                const ssid = wifiNetworks.value;
+                const password = wifiPassword.value;
+                const exhchange = comsChannel.value;
+
+                if (ssid && password) {
+                    await sendSerialData({ command: "SAVE_CONFIG", ssid: ssid, password: password, exhchange: exhchange });
+                    terminalOutput("Updating config and connections ....");
+                } else {
+                    terminalOutput("Please select a network, enter a password and an exchange ID.");
+                }
+            });
+
+            // Send MQTT message
+            sendMqtt.addEventListener('click', async () => {
+                const message = mqttMessage.value;
+                await sendSerialData({ command: "SEND_MQTT", message: message });
+                terminalOutput("Message sent!");
+                mqttMessage.value = '';
+            });
+
+            // Reset Wi-Fi configuration
+            resetConfig.addEventListener('click', async () => {
+                await sendSerialData({ command: "RESET_CONFIG" });
+                terminalOutput("Config reserted!");
+            });
+
+            async function readSerialData() {
+                const decoder = new TextDecoder();
+                reader = serialPort.readable.getReader();
+                try {
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        serialBuffer += decoder.decode(value);
+                        terminalOutput(serialBuffer);
+                        while (serialBuffer.indexOf('\n') !== -1) {
+                            const line = serialBuffer.substring(0, serialBuffer.indexOf('\n'));
+                            serialBuffer = serialBuffer.substring(serialBuffer.indexOf('\n') + 1);
+                            handleJsonData(line);
+                        }
+                    }
+                } catch (error) {
+                    // console.error('Error reading serial data:', error);
+                } finally {
+                    reader.releaseLock();
+                }
+            }
+
+            async function sendSerialData(data) {
+                console.log(data);
+                const jsonString = JSON.stringify(data);
+                const encoder = new TextEncoder();
+                writer = serialPort.writable.getWriter();
+                await writer.write(encoder.encode(jsonString + '\n'));
+                writer.close();
+            }
+
+            async function handleJsonData(jsonString) {
+                try {
+                    const data = JSON.parse(jsonString);
+                    console.log(data);
+                    if(data.command === "CONFIG_RESULT"){
+                        console.log(data);
+                        config = data;
+                        exchangeIdMessage.classList.remove('d-none');
+                        exchangeIdMessage.textContent = `Your Exchange ID is ${data.mqttSendTopic}`;
+                        versionMessage.classList.remove('d-none');
+                        versionMessage.textContent = `Current version: ${data.version}`;
+                        if(networksLoaded === false){
+                            networksLoaded = true;
+                            await delay(5000);
+                            await sendSerialData({command: "SCAN_NETWORKS"});
+                        }
+                    }
+                    else if(data.command === "SCAN_RESULT"){
+                        const networks = data.networks || [];
+                        wifiNetworks.innerHTML = '';
+                        networks.forEach(network => {
+                            const option = document.createElement('option');
+                            option.value = network;
+                            option.textContent = network;
+                            wifiNetworks.appendChild(option);
+                            if (network === config.wifi_SSID) {
+                                option.selected = true;
+                                wifiPassword.value = config.wifi_Password;
+                            }
+                        });
+                        comsChannel.value = config.mqttReciveTopic;
+                        loadingWifiNetworksMessage.classList.add('d-none');
+                        configSection.classList.remove('d-none');
+                    }
+                    else if(data.command === "STATUS_UPDATE"){
+                        if(data.message === "Configuration reseted. Please reconnect."){
+                            window.location.reload();
+                        }
+
+                    }
+                } catch (error) {
+                    // console.error('Error parsing JSON:', error);
+                }
+            }
+        </script>
+    </body>
+</html>

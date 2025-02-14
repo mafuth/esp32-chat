@@ -1,0 +1,9 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"  # MQTT default port
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro  # Mount custom config file
